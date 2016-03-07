@@ -1,6 +1,8 @@
 package com.example.daniel.myapplication;
 
-import android.content.Intent;
+import android.content.Context;
+import android.content.SharedPreferences;
+import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
 
@@ -23,6 +25,8 @@ public class WeatherService extends WearableListenerService implements GoogleApi
     private int min = 0;
     private String weather_id = "";
     private GoogleApiClient mGoogleApiClient;
+    private String nodeId;
+    private byte[] payload;
 
     @Override
     public void onDataChanged(DataEventBuffer dataEvents) {
@@ -36,17 +40,22 @@ public class WeatherService extends WearableListenerService implements GoogleApi
                     max = dataMap.getInt("max");
                     min = dataMap.getInt("min");
                     weather_id = dataMap.getString("weather_id");
-                    Log.e("Data item", weather_id+" - min: "+min+" - max:"+max);
-
-                    Intent intent = new Intent();
-                    intent.setAction("com.daniel.DATA_INTENT");
-                    intent.putExtra("min", min);
-                    intent.putExtra("max", max);
-                    intent.putExtra("weather_id", weather_id);
-                    sendBroadcast(intent);
+                    Log.e("Data item", weather_id + " - min: " + min + " - max:" + max);
                 }
+
+                Uri uri = dataevent.getDataItem().getUri();
+                nodeId = uri.getHost();
+                payload = uri.toString().getBytes();
             }
         }
+
+        SharedPreferences shared = getApplicationContext().getSharedPreferences("com.daniel.sunshineface", Context.MODE_PRIVATE);
+        SharedPreferences.Editor editor = shared.edit();
+        editor.putInt("max", max);
+        editor.putInt("min", min);
+        editor.putString("weather_id", weather_id);
+        editor.apply();
+        editor.commit();
 
         mGoogleApiClient = new GoogleApiClient.Builder(getApplicationContext())
                 .addApi(Wearable.API)
@@ -81,6 +90,9 @@ public class WeatherService extends WearableListenerService implements GoogleApi
                         }
                     }
                 });
+
+        Wearable.MessageApi.sendMessage(mGoogleApiClient, nodeId,
+                "/data-item-received", payload);
 
     }
 

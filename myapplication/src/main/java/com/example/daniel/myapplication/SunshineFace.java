@@ -20,6 +20,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.content.res.Resources;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -35,6 +36,8 @@ import android.view.SurfaceHolder;
 
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.wearable.MessageApi;
+import com.google.android.gms.wearable.MessageEvent;
 import com.google.android.gms.wearable.Wearable;
 
 import java.lang.ref.WeakReference;
@@ -50,6 +53,7 @@ public class SunshineFace extends CanvasWatchFaceService {
     private int max = 0;
     private int min = 0;
     private String weather_id = "void";
+    private String data = "";
 
     /**
      * Update rate in milliseconds for interactive mode. We update once a second to advance the
@@ -87,10 +91,11 @@ public class SunshineFace extends CanvasWatchFaceService {
         }
     }
 
-    private class Engine extends CanvasWatchFaceService.Engine implements GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener {
+
+
+    private class Engine extends CanvasWatchFaceService.Engine implements GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener, MessageApi.MessageListener {
         final Handler mUpdateTimeHandler = new EngineHandler(this);
         boolean mRegisteredTimeZoneReceiver = false;
-        boolean mRegisteredDataReceiver = false;
         Paint mBackgroundPaint;
         Paint mHandPaint;
         boolean mAmbient;
@@ -104,6 +109,7 @@ public class SunshineFace extends CanvasWatchFaceService {
             }
         };
         int mTapCount;
+        SharedPreferences shared;
 
         /**
          * Whether the display supports fewer bits for each color in ambient mode. When true, we
@@ -142,6 +148,17 @@ public class SunshineFace extends CanvasWatchFaceService {
                     .build();
 
             mGoogleApiClient.connect();
+
+            Wearable.MessageApi.addListener(mGoogleApiClient, this);
+
+            shared = getApplicationContext().getSharedPreferences("com.daniel.sunshineface", Context.MODE_PRIVATE);
+        }
+
+        @Override
+        public void onMessageReceived(MessageEvent messageEvent) {
+            if(messageEvent.getPath().equals("/data-item-received")){
+                data = messageEvent.getData().toString();
+            }
         }
 
         @Override
@@ -161,17 +178,6 @@ public class SunshineFace extends CanvasWatchFaceService {
             super.onTimeTick();
             invalidate();
         }
-
-        final BroadcastReceiver dataReceiver = new BroadcastReceiver() {
-            @Override
-            public void onReceive(Context context, Intent intent) {
-                min = intent.getIntExtra("min", 0);
-                max = intent.getIntExtra("max", 0);
-                weather_id = intent.getStringExtra("weather_id");
-
-                invalidate();
-            }
-        };
 
         @Override
         public void onAmbientModeChanged(boolean inAmbientMode) {
@@ -222,9 +228,9 @@ public class SunshineFace extends CanvasWatchFaceService {
                 canvas.drawColor(Color.BLACK);
             } else {
                 canvas.drawRect(0, 0, canvas.getWidth(), canvas.getHeight(), mBackgroundPaint);
-                canvas.drawText(min + " - ", 120, 200, mHandPaint);
-                canvas.drawText(max+" - ", 140, 200, mHandPaint);
-                canvas.drawText(weather_id+" - ", 160, 200, mHandPaint);
+                canvas.drawText(shared.getInt("min", 0) + " - ", 120, 200, mHandPaint);
+                canvas.drawText(shared.getInt("max", 0) +" - ", 140, 200, mHandPaint);
+                canvas.drawText(data +" - ", 160, 200, mHandPaint);
             }
         }
 
@@ -248,25 +254,20 @@ public class SunshineFace extends CanvasWatchFaceService {
         }
 
         private void registerReceiver() {
-            if (mRegisteredTimeZoneReceiver && mRegisteredDataReceiver) {
+            if (mRegisteredTimeZoneReceiver) {
                 return;
             }
             mRegisteredTimeZoneReceiver = true;
-            mRegisteredDataReceiver = true;
             IntentFilter filter = new IntentFilter(Intent.ACTION_TIMEZONE_CHANGED);
-            IntentFilter filterDataReciver = new IntentFilter("com.daniel.DATA_INTENT");
-            SunshineFace.this.registerReceiver(dataReceiver, filterDataReciver);
             SunshineFace.this.registerReceiver(mTimeZoneReceiver, filter);
         }
 
         private void unregisterReceiver() {
-            if (!mRegisteredTimeZoneReceiver && !mRegisteredDataReceiver) {
+            if (!mRegisteredTimeZoneReceiver) {
                 return;
             }
             mRegisteredTimeZoneReceiver = false;
-            mRegisteredDataReceiver = false;
             SunshineFace.this.unregisterReceiver(mTimeZoneReceiver);
-            SunshineFace.this.unregisterReceiver(dataReceiver);
         }
 
         /**
